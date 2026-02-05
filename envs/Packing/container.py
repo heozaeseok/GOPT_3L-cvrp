@@ -533,21 +533,28 @@ class Container(object):
     
     def candidate_from_EMS(self, next_box, max_n) -> Tuple[np.ndarray, np.ndarray]:
         heightmap = copy.deepcopy(self.heightmap)
-        # 모든 가능한 최대 빈 공간(EMS) 계산 [cite: 181]
-        all_ems = compute_ems(heightmap, container_h=self.dimension[2])  
+        
+        # [수정] self.boxes를 넘겨주어 z=0 코너 및 Hollow Space를 계산함
+        all_ems = compute_ems(
+            heightmap, 
+            container_h=self.dimension[2], 
+            boxes=self.boxes
+        )  
 
         candidates = all_ems
         mask = np.zeros((2, max_n), dtype=np.int8)
         
-        # 정렬: x(세로) -> y(가로) -> z(높이) 순서로 정렬하여 입구쪽 우선순위 부여 [cite: 186]
+        # 정렬 순서 유지: x -> y -> z
         candidates.sort(key=lambda x: [x[0], x[1], x[2]])
 
         if len(candidates) > max_n:
             candidates = candidates[:max_n]
         
         for id, ems in enumerate(candidates):
+            # check_box_ems는 내부적으로 z2 범위 내에 박스가 들어가는지 체크함
             if self.check_box_ems(next_box, ems) > -1:
                 mask[0, id] = 1
+                
         if self.can_rotate:
             rotated_box = [next_box[1], next_box[0], next_box[2]]
             for id, ems in enumerate(candidates):

@@ -2,7 +2,7 @@
 import copy
 import itertools
 import time
-
+import itertools
 import numpy as np
 
 
@@ -162,56 +162,68 @@ def compute_ems(
         heightmap: np.ndarray, 
         container_h: int, 
         min_ems_width: int = 0, 
-        id_map: np.ndarray = None
+        boxes: list = None  # 박스 리스트 추가 수신
     ) -> list:
+    
     container_h = int(container_h)
     empty_max_spaces = []
     
-    if id_map is not None:
-        m = id_map
-    else:
-        m = heightmap
-    corners, left_bottom_corners, x_borders, y_borders = compute_corners(m)
-
-    compute_empty_space(
-        container_h, 
-        left_bottom_corners, 
-        x_borders, 
-        y_borders, 
-        heightmap, 
-        empty_max_spaces, 
-        'right', 
-        'right', 
-        min_ems_width=min_ems_width
-    )
-
-    compute_empty_space(
-        container_h, 
-        corners, 
-        x_borders, 
-        y_borders, 
-        heightmap, 
-        empty_max_spaces, 
-        'left-right', 
-        'left-right', 
-        min_ems_width=min_ems_width
-    )
-
-    # NOTE stair corners
-    stair_corners = compute_stair_corners(heightmap, corners)
-    compute_empty_space(
-        container_h, 
-        stair_corners, 
-        x_borders, 
-        y_borders, 
-        heightmap, 
-        empty_max_spaces, 
-        'right', 
-        'right', 
-        min_ems_width=min_ems_width
-    )
+    # [1] 기존 Heightmap 기반 EMS (상단이 열린 공간들)
+    corners, lb_corners, x_borders, y_borders = compute_corners(heightmap)
+    compute_empty_space(container_h, lb_corners, x_borders, y_borders, heightmap, empty_max_spaces, 'right', 'right', min_ems_width)
+    compute_empty_space(container_h, corners, x_borders, y_borders, heightmap, empty_max_spaces, 'left-right', 'left-right', min_ems_width)
     
+    stair_corners = compute_stair_corners(heightmap, corners)
+    compute_empty_space(container_h, stair_corners, x_borders, y_borders, heightmap, empty_max_spaces, 'right', 'right', min_ems_width)
+
+    # [2] z=0 평면의 빨간 점(바닥 코너) 추가 탐색 (Hollow Space용)
+    if boxes is not None:
+        # 바닥 점유 맵 생성 (박스가 바닥면을 점유하고 있는지 확인)
+        bottom_map = np.zeros_like(heightmap)
+        for box in boxes:
+            if box.pos_z == 0:
+                bottom_map[box.pos_x : box.pos_x + box.size_x, 
+                           box.pos_y : box.pos_y + box.size_y] = 1
+        
+        # 바닥 지도 기준의 코너(빨간 점들) 식별
+        _, b_lb_corners, b_xb, b_yb = compute_corners(bottom_map)
+        
+        for corner in b_lb_corners:
+            cx, cy = corner
+            if bottom_map[cx, cy] == 1: continue # 이미 바닥이 차있으면 제외
+
+            # 바닥 지도상에서 가능한 최대 x, y 확장 (단순화된 확장 로직)
+            x_large, y_large = find_max_floor_range(bottom_map, cx, cy)
+            
+            # 해당 영역(cx~x_large, cy~y_large) 위의 '천장' 높이 계산
+            z2 = container_h
+            for box in boxes:
+                # 2D 영역이 겹치는지 확인
+                if not (box.pos_x >= x_large or box.pos_x + box.size_x <= cx or
+                        box.pos_y >= y_large or box.pos_y + box.size_y <= cy):
+                    if box.pos_z > 0: # 위에 떠 있는 박스가 있다면 그 바닥이 천장이 됨
+                        z2 = min(z2, box.pos_z)
+            
+            new_ems = [cx, cy, 0, x_large, y_large, z2]
+            if (x_large - cx >= min_ems_width) and (y_large - cy >= min_ems_width):
+                if new_ems not in empty_max_spaces:
+                    empty_max_spaces.append(new_ems)
+
     return empty_max_spaces
+
+def find_max_floor_range(bottom_map, cx, cy):
+    # 빈의 사이즈가 고정되어 있으므로 행렬 끝까지 탐색
+    xl, yl = bottom_map.shape
+    curr_x = cx
+    while curr_x < xl and bottom_map[curr_x, cy] == 0:
+        curr_x += 1
+    
+    curr_y = cy
+    # 지정된 x범위 내에서 y로 어디까지 확장 가능한지 체크
+    while curr_y < yl and np.all(bottom_map[cx:curr_x, curr_y] == 0):
+        curr_y += 1
+        
+    return curr_x, curr_y
 
 
 def add_box(heightmap, box, pos):
