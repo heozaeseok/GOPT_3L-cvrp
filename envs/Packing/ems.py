@@ -158,6 +158,7 @@ def compute_empty_space(
                 if new_ems is not None and new_ems not in empty_space_list:
                     empty_space_list.append(new_ems)
 
+<<<<<<< HEAD
 def compute_ems(
         heightmap: np.ndarray, 
         container_h: int, 
@@ -169,10 +170,18 @@ def compute_ems(
     empty_max_spaces = []
     
     # [1] 기존 Heightmap 기반 EMS (상단이 열린 공간들)
+=======
+def compute_ems(heightmap, container_h, min_ems_width=0, boxes=None):
+    container_h = int(container_h)
+    empty_max_spaces = []
+    
+    # [1] 기존 Heightmap 기반 EMS (기존 로직 유지)
+>>>>>>> temp-branch
     corners, lb_corners, x_borders, y_borders = compute_corners(heightmap)
     compute_empty_space(container_h, lb_corners, x_borders, y_borders, heightmap, empty_max_spaces, 'right', 'right', min_ems_width)
     compute_empty_space(container_h, corners, x_borders, y_borders, heightmap, empty_max_spaces, 'left-right', 'left-right', min_ems_width)
     
+<<<<<<< HEAD
     stair_corners = compute_stair_corners(heightmap, corners)
     compute_empty_space(container_h, stair_corners, x_borders, y_borders, heightmap, empty_max_spaces, 'right', 'right', min_ems_width)
 
@@ -202,6 +211,32 @@ def compute_ems(
                 if not (box.pos_x >= x_large or box.pos_x + box.size_x <= cx or
                         box.pos_y >= y_large or box.pos_y + box.size_y <= cy):
                     if box.pos_z > 0: # 위에 떠 있는 박스가 있다면 그 바닥이 천장이 됨
+=======
+    # [2] 바닥 Hollow Space 탐색 (z=0)
+    if boxes is not None:
+        bottom_map = np.zeros_like(heightmap)
+        for box in boxes:
+            if box.pos_z == 0: # 바닥에 닿은 박스들로 점유 맵 생성
+                bottom_map[box.pos_x : box.pos_x + box.size_x, 
+                           box.pos_y : box.pos_y + box.size_y] = 1
+        
+        # 바닥의 빈 코너들 찾기
+        _, b_lb_corners, _, _ = compute_corners(bottom_map)
+        
+        for corner in b_lb_corners:
+            cx, cy = corner
+            if bottom_map[cx, cy] == 1: continue 
+
+            x_large, y_large = find_max_floor_range(bottom_map, cx, cy)
+            
+            # 이 영역 위에 떠 있는 박스들 중 가장 낮은 바닥면을 천장(z2)으로 설정
+            z2 = container_h
+            for box in boxes:
+                # XY 영역 중첩 확인
+                if not (box.pos_x >= x_large or box.pos_x + box.size_x <= cx or
+                        box.pos_y >= y_large or box.pos_y + box.size_y <= cy):
+                    if box.pos_z > 0:
+>>>>>>> temp-branch
                         z2 = min(z2, box.pos_z)
             
             new_ems = [cx, cy, 0, x_large, y_large, z2]
