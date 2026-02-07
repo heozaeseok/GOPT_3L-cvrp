@@ -344,24 +344,25 @@ class Container(object):
         return position[0] * self.dimension[1] + position[1]
 
     def place_box(self, box_size, pos, rot_flag):
-        """주어진 pos(x,y,z)에 박스를 실제 적재"""
         if not rot_flag:
             size_x, size_y = box_size[0], box_size[1]
         else:
             size_x, size_y = box_size[1], box_size[0]
         size_z = box_size[2]
         
-        # [수정] pos[2]를 신뢰하되, 마지막으로 충돌 여부만 가볍게 체크
-        # (이미 mask 생성 단계에서 통과했으므로 간단히 수행)
-        if pos[0] + size_x > self.dimension[0] or pos[1] + size_y > self.dimension[1] or pos[2] + size_z > self.dimension[2]:
+        # [수정] 3D 충돌 체크 및 경계 체크를 먼저 수행하여 False를 반환하게 함
+        if self.check_3d_collision([size_x, size_y, size_z], pos):
+            return False
+            
+        if pos[0] + size_x > self.dimension[0] or \
+        pos[1] + size_y > self.dimension[1] or \
+        pos[2] + size_z > self.dimension[2]:
             return False
 
-        # 적재 실행
         new_box = Box(size_x, size_y, size_z, pos[0], pos[1], pos[2])
         self.boxes.append(new_box)
         self.rot_flags.append(rot_flag)
         
-        # Heightmap 업데이트 (Hollow Space 적재 시에도 최상단 높이는 갱신되어야 함)
         self.heightmap = self.update_heightmap(self.heightmap, new_box)
         self.height = max(self.height, pos[2] + size_z)
         return True

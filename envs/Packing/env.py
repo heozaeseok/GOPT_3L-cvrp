@@ -82,13 +82,14 @@ class PackingEnv(gym.Env):
         self._set_space()
 
     def _set_space(self) -> None:
-        obs_len = self.area + 3  # the state of bin + the dimension of box (l, w, h)
+        obs_len = self.area + 3 
         obs_len += self.k_placement * 6
-        self.action_space = spaces.Discrete(self.k_placement)
+        # [수정] 위치(k_placement) x 회전(2) = 2 * k_placement
+        self.action_space = spaces.Discrete(self.k_placement * 2) 
         self.observation_space = spaces.Dict(
             {
                 "obs": spaces.Box(low=0, high=max(self.bin_size), shape=(obs_len, )),
-                "mask": spaces.Discrete(self.k_placement)
+                "mask": spaces.Box(low=0, high=1, shape=(self.k_placement * 2,), dtype=np.int8)
             }
         )
 
@@ -133,54 +134,43 @@ class PackingEnv(gym.Env):
         return self.box_creator.preview(1)[0]
     
     def get_possible_position(self, next_box):
-        """
-        GOPT 구조 내에서 x축 방향 진입 제약을 마스크로 구현
-        """
         if self.action_scheme == "heightmap":
             candidates = self.container.candidate_from_heightmap(next_box, self.k_placement)
-            # heightmap 방식은 기본 마스크가 없으므로 1로 초기화 후 아래에서 필터링
             mask = np.ones((2, len(candidates)), dtype=np.int8) 
         elif self.action_scheme == "EP":
             candidates, mask = self.container.candidate_from_EP(next_box, self.k_placement)
         elif self.action_scheme == "EMS":
-            # 1. 기본 적재 가능 후보와 마스크 생성 [cite: 153, 181]
             candidates, mask = self.container.candidate_from_EMS(next_box, self.k_placement)
         elif self.action_scheme == "FC":
             candidates, mask = self.container.candidate_from_FC(next_box)
         else:
             raise NotImplementedError("action scheme not implemented")
 
-        # --- x축 진입 가시성(Visibility) 제약 로직 ---
         hmap = self.container.heightmap
         
         for i, ems in enumerate(candidates):
-            # ems: [x1, y1, z1, x2, y2, z2] [cite: 184]
             x_start, y_start, z_base = int(ems[0]), int(ems[1]), int(ems[2])
-            
-            # 입구(x=0)에 바로 놓는 경우는 항상 통과
-            if x_start == 0:
-                continue
+            if x_start == 0: continue
 
             for rot in range(2):
-                if mask[rot, i] == 0:
-                    continue 
+                if mask[rot, i] == 0: continue 
 
-                # 현재 회전 상태에 따른 y축 점유 범위 계산 [cite: 167, 208]
                 curr_size_y = next_box[1] if rot == 0 else next_box[0]
                 y_end = min(y_start + curr_size_y, hmap.shape[1])
-
-                # 경로 체크: x=0부터 목표지점 x_start 직전까지
-                # 경로 상의 높이가 현재 놓으려는 높이(z_base)보다 높으면 사람이 밀어 넣을 수 없음
                 path_area = hmap[0:x_start, y_start:y_end]
                 
                 if np.any(path_area > z_base):
-                    mask[rot, i] = 0 # 경로에 높은 장애물이 있으면 마스킹 [cite: 153]
-        # --------------------------------------------
+                    mask[rot, i] = 0
+
+        # [수정] 루프 외부에서 체크: 모든 위치가 불가능할 경우 0번만 살려 step에서 종료 유도
+        if np.all(mask == 0):
+            mask[0, 0] = 1
 
         return candidates, mask
 
     def idx2pos(self, idx):
-        if idx >= self.k_placement - 1:
+        # k_placement 단위로 rot(회전) 여부를 결정
+        if idx >= self.k_placement:
             idx = idx - self.k_placement
             rot = 1
         else:
@@ -195,7 +185,7 @@ class PackingEnv(gym.Env):
         self.render_box = [dim, pos]
 
         return pos, rot, dim
-
+    
     def step(self, action):
         """
 
