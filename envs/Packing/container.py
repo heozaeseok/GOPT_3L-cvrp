@@ -210,45 +210,50 @@ class Container(object):
 
         return -1
 
-    def check_box_ems(self, box_size, ems, benchmark=False):
-        """
-        EMS가 제공하는 좌표를 기반으로 적재 가능성을 체크합니다.
-        기존 Heightmap 기반 적재와 바닥면 기반 적재를 모두 지원합니다.
-        """
-        # 1. 물리적 공간 크기 체크 (EMS 범위 내에 박스가 들어가는지)
-        if ems[3] - ems[0] < box_size[0] or ems[4] - ems[1] < box_size[1] or ems[5] - ems[2] < box_size[2]:
-            return -1
+    def check_3d_collision(self, box_size, pos):
+        """기존에 적재된 모든 박스들과 3D 공간상에서 겹치는지 체크"""
+        x1, y1, z1 = pos
+        x2, y2, z2 = x1 + box_size[0], y1 + box_size[1], z1 + box_size[2]
+        
+        for box in self.boxes:
+            # AABB Collision Detection
+            if not (x2 <= box.pos_x or x1 >= box.pos_x + box.size_x or
+                    y2 <= box.pos_y or y1 >= box.pos_y + box.size_y or
+                    z2 <= box.pos_z or z1 >= box.pos_z + box.size_z):
+                return True # 충돌 발생
+        return False
 
-        # 2. 컨테이너 경계 체크
+    def check_box_ems(self, box_size, ems, benchmark=False):
+        """EMS 기반 적재 가능 여부 체크"""
+        # 1. 컨테이너 경계 체크
         if ems[0] + box_size[0] > self.dimension[0] or ems[1] + box_size[1] > self.dimension[1]:
             return -1
-
-        # [수정] 결정된 위치의 현재 Heightmap 높이 확인
-        current_h = np.max(self.heightmap[ems[0]:ems[0] + box_size[0], ems[1]:ems[1] + box_size[1]])
         
-        # [핵심 로직]
-        # EMS의 시작 높이(ems[2])가 현재 Heightmap보다 낮다면(Hollow Space), ems[2]를 우선 사용.
-        # 만약 ems[2]가 Heightmap보다 높다면(물체 위 적재), ems[2] 위치에 배치.
-        pos_z = int(ems[2])
-
-        # 3. 컨테이너 천장 높이 체크
-        if pos_z + box_size[2] > self.dimension[2]:
+        # 2. EMS 가용 범위(기둥 높이) 체크
+        if ems[2] + box_size[2] > ems[5]: 
             return -1
-        
-        # 4. 물리적 충돌 체크 (Hollow Space 배치 시 기존 박스와 겹치는지 검증)
-        # Heightmap 기반일 때는 current_h와 같으므로 자동으로 통과되지만, 
-        # 바닥면 기반일 때는 해당 공간이 비어있는지 확인이 필요합니다.
-        for box in self.boxes:
-            if not (box.pos_x >= ems[0] + box_size[0] or box.pos_x + box.size_x <= ems[0] or
-                    box.pos_y >= ems[1] + box_size[1] or box.pos_y + box.size_y <= ems[1]):
-                # 2D 영역이 겹칠 때, Z축 구간도 겹치는지 확인
-                if not (box.pos_z >= pos_z + box_size[2] or box.pos_z + box.size_z <= pos_z):
-                    return -1
-        
-        # 5. 안정성 체크
-        if self.is_stable(box_size, [ems[0], ems[1], pos_z]):
-            return pos_z
 
+        # 3. 바닥(Hollow Space)과 일반 EMS 분기 처리
+        if ems[2] == 0:
+            # 바닥인 경우: 3D 충돌만 체크 (바닥이므로 항상 안정적)
+            if self.check_3d_collision(box_size, ems[:3]):
+                return -1
+            return 0 # z=0 반환
+        else:
+            # 공중에 있는 EMS인 경우: 기존 heightmap 기반 로직 유지
+            pos_z = np.max(self.heightmap[ems[0]:ems[0] + box_size[0], ems[1]:ems[1] + box_size[1]])
+            
+            # 지정된 EMS 높이(z)보다 실제 바닥이 높으면 적재 불가 (중력 무시 불가)
+            if pos_z != ems[2]:
+                return -1
+
+            if pos_z + box_size[2] > self.dimension[2]:
+                return -1
+            
+            # 안정성 체크
+            if self.is_stable(box_size, [ems[0], ems[1], pos_z]):
+                return pos_z
+            
         return -1
 
     def is_stable(self, dimension, position) -> bool:
@@ -339,21 +344,25 @@ class Container(object):
         return position[0] * self.dimension[1] + position[1]
 
     def place_box(self, box_size, pos, rot_flag):
-        """
-        pos 인자에 이미 EMS로부터 계산된 z값이 포함되어 있다고 가정합니다. (env.py의 idx2pos 참고)
-        """
+        """주어진 pos(x,y,z)에 박스를 실제 적재"""
         if not rot_flag:
             size_x, size_y = box_size[0], box_size[1]
         else:
             size_x, size_y = box_size[1], box_size[0]
         size_z = box_size[2]
         
-        # pos[2]는 이미 ems[2]를 기반으로 결정된 z값임
-        self.boxes.append(Box(size_x, size_y, size_z, pos[0], pos[1], pos[2]))
+        # [수정] pos[2]를 신뢰하되, 마지막으로 충돌 여부만 가볍게 체크
+        # (이미 mask 생성 단계에서 통과했으므로 간단히 수행)
+        if pos[0] + size_x > self.dimension[0] or pos[1] + size_y > self.dimension[1] or pos[2] + size_z > self.dimension[2]:
+            return False
+
+        # 적재 실행
+        new_box = Box(size_x, size_y, size_z, pos[0], pos[1], pos[2])
+        self.boxes.append(new_box)
         self.rot_flags.append(rot_flag)
         
-        # Heightmap 업데이트 (기존 로직 유지 - 쌓기용)
-        self.heightmap = self.update_heightmap(self.heightmap, self.boxes[-1])
+        # Heightmap 업데이트 (Hollow Space 적재 시에도 최상단 높이는 갱신되어야 함)
+        self.heightmap = self.update_heightmap(self.heightmap, new_box)
         self.height = max(self.height, pos[2] + size_z)
         return True
 
