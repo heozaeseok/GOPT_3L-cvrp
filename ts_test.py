@@ -121,14 +121,14 @@ if __name__ == '__main__':
     args.train.step_per_collect = args.train.num_processes * args.train.num_steps  
 
     #모델 경로
-    args.ckp = r"C:\Users\USER\Desktop\SDO\policy_step_best2.pth"
+    args.ckp = r"C:\Users\USER\Desktop\SDO\policy_step_best3.pth"
     args.render = True
     #테스트 에피소드 수
     args.test_episode = 1
     #시드 설정
     import time
-    #args.seed = int(time.time()) 
-    args.seed = 1770091682
+    args.seed = int(time.time()) 
+    #args.seed = 1770091682
     #1770176908 / 1770176863 / 1770091097 / 1770091682 / 1770091796
     #1770178237
     print(f"Current Seed: {args.seed}")

@@ -212,29 +212,40 @@ class Container(object):
 
     def check_box_ems(self, box_size, ems, benchmark=False):
         """
-            check
-            1. whether cross the border
-            2. check stability
-        Args:
-            box_size:
-            pos_xy:
-
-        Returns:
-
+        EMS가 제공하는 좌표를 기반으로 적재 가능성을 체크합니다.
+        기존 Heightmap 기반 적재와 바닥면 기반 적재를 모두 지원합니다.
         """
+        # 1. 물리적 공간 크기 체크 (EMS 범위 내에 박스가 들어가는지)
         if ems[3] - ems[0] < box_size[0] or ems[4] - ems[1] < box_size[1] or ems[5] - ems[2] < box_size[2]:
             return -1
 
+        # 2. 컨테이너 경계 체크
         if ems[0] + box_size[0] > self.dimension[0] or ems[1] + box_size[1] > self.dimension[1]:
             return -1
 
-        pos_z = np.max(self.heightmap[ems[0]:ems[0] + box_size[0], ems[1]:ems[1] + box_size[1]])
+        # [수정] 결정된 위치의 현재 Heightmap 높이 확인
+        current_h = np.max(self.heightmap[ems[0]:ems[0] + box_size[0], ems[1]:ems[1] + box_size[1]])
+        
+        # [핵심 로직]
+        # EMS의 시작 높이(ems[2])가 현재 Heightmap보다 낮다면(Hollow Space), ems[2]를 우선 사용.
+        # 만약 ems[2]가 Heightmap보다 높다면(물체 위 적재), ems[2] 위치에 배치.
+        pos_z = int(ems[2])
 
-        # whether cross the broder
+        # 3. 컨테이너 천장 높이 체크
         if pos_z + box_size[2] > self.dimension[2]:
             return -1
         
-        # check stability
+        # 4. 물리적 충돌 체크 (Hollow Space 배치 시 기존 박스와 겹치는지 검증)
+        # Heightmap 기반일 때는 current_h와 같으므로 자동으로 통과되지만, 
+        # 바닥면 기반일 때는 해당 공간이 비어있는지 확인이 필요합니다.
+        for box in self.boxes:
+            if not (box.pos_x >= ems[0] + box_size[0] or box.pos_x + box.size_x <= ems[0] or
+                    box.pos_y >= ems[1] + box_size[1] or box.pos_y + box.size_y <= ems[1]):
+                # 2D 영역이 겹칠 때, Z축 구간도 겹치는지 확인
+                if not (box.pos_z >= pos_z + box_size[2] or box.pos_z + box.size_z <= pos_z):
+                    return -1
+        
+        # 5. 안정성 체크
         if self.is_stable(box_size, [ems[0], ems[1], pos_z]):
             return pos_z
 
@@ -328,28 +339,23 @@ class Container(object):
         return position[0] * self.dimension[1] + position[1]
 
     def place_box(self, box_size, pos, rot_flag):
-        """ place box in the position (index), then update heightmap
-        :param box_size:
-        :param idx:
-        :param rot_flag:
-        :return:
+        """
+        pos 인자에 이미 EMS로부터 계산된 z값이 포함되어 있다고 가정합니다. (env.py의 idx2pos 참고)
         """
         if not rot_flag:
-            size_x = box_size[0]
-            size_y = box_size[1]
+            size_x, size_y = box_size[0], box_size[1]
         else:
-            size_x = box_size[1]
-            size_y = box_size[0]
+            size_x, size_y = box_size[1], box_size[0]
         size_z = box_size[2]
-        plain = self.heightmap
-        new_h = self.check_box([size_x, size_y, size_z], [pos[0], pos[1]])
-        if new_h != -1:
-            self.boxes.append(Box(size_x, size_y, size_z, pos[0], pos[1], pos[2]))  # record rotated box
-            self.rot_flags.append(rot_flag)
-            self.heightmap = self.update_heightmap(plain, self.boxes[-1])
-            self.height = max(self.height, pos[2] + size_z)
-            return True
-        return False
+        
+        # pos[2]는 이미 ems[2]를 기반으로 결정된 z값임
+        self.boxes.append(Box(size_x, size_y, size_z, pos[0], pos[1], pos[2]))
+        self.rot_flags.append(rot_flag)
+        
+        # Heightmap 업데이트 (기존 로직 유지 - 쌓기용)
+        self.heightmap = self.update_heightmap(self.heightmap, self.boxes[-1])
+        self.height = max(self.height, pos[2] + size_z)
+        return True
 
     def candidate_from_heightmap(self, next_box, max_n) -> list:
         """
@@ -533,21 +539,28 @@ class Container(object):
     
     def candidate_from_EMS(self, next_box, max_n) -> Tuple[np.ndarray, np.ndarray]:
         heightmap = copy.deepcopy(self.heightmap)
-        # 모든 가능한 최대 빈 공간(EMS) 계산 [cite: 181]
-        all_ems = compute_ems(heightmap, container_h=self.dimension[2])  
+        
+        # [수정] self.boxes를 넘겨주어 z=0 코너 및 Hollow Space를 계산함
+        all_ems = compute_ems(
+            heightmap, 
+            container_h=self.dimension[2], 
+            boxes=self.boxes
+        )  
 
         candidates = all_ems
         mask = np.zeros((2, max_n), dtype=np.int8)
         
-        # 정렬: x(세로) -> y(가로) -> z(높이) 순서로 정렬하여 입구쪽 우선순위 부여 [cite: 186]
+        # 정렬 순서 유지: x -> y -> z
         candidates.sort(key=lambda x: [x[0], x[1], x[2]])
 
         if len(candidates) > max_n:
             candidates = candidates[:max_n]
         
         for id, ems in enumerate(candidates):
+            # check_box_ems는 내부적으로 z2 범위 내에 박스가 들어가는지 체크함
             if self.check_box_ems(next_box, ems) > -1:
                 mask[0, id] = 1
+                
         if self.can_rotate:
             rotated_box = [next_box[1], next_box[0], next_box[2]]
             for id, ems in enumerate(candidates):
