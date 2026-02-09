@@ -150,19 +150,28 @@ class PackingEnv(gym.Env):
         
         for i, ems in enumerate(candidates):
             x_start, y_start, z_base = int(ems[0]), int(ems[1]), int(ems[2])
-            if x_start == 0: continue
+            # [수정] 입구가 X_max이므로 기존 x_start == 0 예외 처리는 삭제
 
             for rot in range(2):
                 if mask[rot, i] == 0: continue 
 
+                # 회전 여부에 따른 현재 박스의 X, Y 크기 결정
+                curr_size_x = next_box[0] if rot == 0 else next_box[1]
                 curr_size_y = next_box[1] if rot == 0 else next_box[0]
+                
+                # [수정] 박스가 입구(X_max)에 딱 붙어 적재되는 경우 경로 체크 불필요
+                if x_start + curr_size_x >= hmap.shape[0]:
+                    continue
+
                 y_end = min(y_start + curr_size_y, hmap.shape[1])
-                path_area = hmap[0:x_start, y_start:y_end]
+                
+                # [수정] 현재 배치 위치(x_start + curr_size_x)부터 입구(hmap 끝)까지의 경로 확인
+                path_area = hmap[x_start + curr_size_x:, y_start:y_end]
                 
                 if np.any(path_area > z_base):
                     mask[rot, i] = 0
 
-        # [수정] 루프 외부에서 체크: 모든 위치가 불가능할 경우 0번만 살려 step에서 종료 유도
+        # 모든 위치가 불가능할 경우에 대한 폴백 로직
         if np.all(mask == 0):
             mask[0, 0] = 1
 
