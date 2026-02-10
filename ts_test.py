@@ -30,7 +30,8 @@ def test(args):
 
     # CVRP 데이터 파싱 및 환경 설정 (train.py와 동일하게 맞춤)
     # 주의: 실행 시 args.data_path가 올바른 데이터 파일을 가리키고 있어야 합니다.
-    cvrp_file = args.data_path 
+    #cvrp_file = args.data_path 
+    cvrp_file = r"C:\Users\USER\Desktop\SDO\GOPT_cvrp\3L_CVRP\3l_cvrp24.txt"
     if not os.path.exists(cvrp_file):
         print(f"Error: Data file not found at {cvrp_file}")
         print("Please check 'args.data_path' in arguments.py or pass it via command line.")
@@ -121,15 +122,17 @@ if __name__ == '__main__':
     args.train.step_per_collect = args.train.num_processes * args.train.num_steps  
 
     #모델 경로
-    args.ckp = r"C:\Users\USER\Desktop\SDO\policy_step_best5.pth"
+    args.ckp = r"C:\Users\USER\Desktop\SDO\policy_step_best6.pth"
     args.render = True
     #테스트 에피소드 수
     args.test_episode = 1
     #시드 설정
     import time
     args.seed = int(time.time()) 
-    #args.seed =
-    #5번 파일 : 1770610458 / 1770610558 / 
+    #args.seed = 1770624124
+    #5번 파일 : 
+    #그냥 잘채우는거 : 1770623879, 1770613155, 1770610458, 1770624124
+    #제약이 보이는거 : 1770610558, 1770625166
 
     print(f"Current Seed: {args.seed}")
 

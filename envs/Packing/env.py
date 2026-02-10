@@ -172,9 +172,10 @@ class PackingEnv(gym.Env):
                     mask[rot, i] = 0
 
         # 모든 위치가 불가능할 경우에 대한 폴백 로직
+        '''
         if np.all(mask == 0):
             mask[0, 0] = 1
-
+        '''
         return candidates, mask
 
     def idx2pos(self, idx):

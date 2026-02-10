@@ -294,7 +294,7 @@ class Container(object):
                     points.append([x, y])
 
         # the support area is more than half of the bottom surface of the item
-        if len(points) > dimension[0] * dimension[1] * 0.5:
+        if len(points) > dimension[0] * dimension[1] * 0.75:
             return True
         
         if len(points) == 0 or len(points) == 1: 
