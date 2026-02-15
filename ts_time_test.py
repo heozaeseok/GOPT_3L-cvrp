@@ -75,8 +75,6 @@ def test_tf(args):
     for i in range(args.test_episode):
         obs, _ = test_env.reset()
         done = False
-        
-        # [수정] unwrapped를 통해 원본 환경의 box_creator 및 변수명 all_items에 접근
         raw_env = test_env.unwrapped
         total_items_to_pack = len(raw_env.box_creator.all_items)
         
@@ -105,7 +103,7 @@ def test_tf(args):
     print("-" * 60)
     print(f"Final Success Rate: {success_count}/{args.test_episode} ({success_count/args.test_episode*100:.1f}%)")
     print(f"Total Test Time: {total_duration:.2f} seconds")
-
+    
 if __name__ == '__main__':
     registration_envs()
     args = arguments.get_args()

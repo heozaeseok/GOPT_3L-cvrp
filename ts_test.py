@@ -31,7 +31,7 @@ def test(args):
     # CVRP 데이터 파싱 및 환경 설정 (train.py와 동일하게 맞춤)
     # 주의: 실행 시 args.data_path가 올바른 데이터 파일을 가리키고 있어야 합니다.
     #cvrp_file = args.data_path 
-    cvrp_file = r"C:\Users\USER\Desktop\SDO\GOPT_cvrp\3L_CVRP\3l_cvrp24.txt"
+    cvrp_file = r"C:\Users\USER\Desktop\SDO\GOPT_cvrp\3L_CVRP\3l_cvrp14.txt"
     if not os.path.exists(cvrp_file):
         print(f"Error: Data file not found at {cvrp_file}")
         print("Please check 'args.data_path' in arguments.py or pass it via command line.")
