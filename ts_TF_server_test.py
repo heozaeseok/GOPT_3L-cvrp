@@ -3,24 +3,27 @@ import json
 import time
 
 def run_client():
-    print("[*] Python 테스트 클라이언트를 시작합니다. 종료하려면 'q' 입력.")
+    print("[*] 테스트 클라이언트를 시작합니다. 'q' 입력 시 종료.")
+    
     while True:
-        user_input = input("\n[Input] 파일ID와 경로 입력 (예: 1 5 7 4): ")
+        # 1. 터미널에서 경로(route)만 입력받음
+        user_input = input("\n[Input] 경로를 입력하세요 (예: 5 7 4): ")
         if user_input.lower() == 'q': break
         
-        parts = user_input.split()
-        if not parts: continue
-        
-        file_id = int(parts[0])
-        route = [int(x) for x in parts[1:]]
+        try:
+            route = [int(x) for x in user_input.split()]
+        except ValueError:
+            print("[-] 숫자만 입력해주세요.")
+            continue
 
         start_time = time.time()
         
-        # 서버 연결
+        # 2. 서버 연결 및 전송
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
                 s.connect(('127.0.0.1', 9999))
-                message = json.dumps({"file": file_id, "route": route})
+                # 파일 ID는 서버가 이미 알고 있으므로 route만 전송
+                message = json.dumps({"route": route})
                 s.sendall(message.encode('utf-8'))
                 
                 response = s.recv(1024).decode('utf-8')
@@ -29,7 +32,7 @@ def run_client():
                 print(f"[Result] 서버 응답: {response}")
                 print(f"[Time] 소요 시간: {duration:.4f} 초")
             except ConnectionRefusedError:
-                print("[-] 서버가 꺼져 있습니다. ts_TF_server.py를 먼저 실행하세요.")
+                print("[-] 서버 연결 실패. ts_TF_server.py를 실행 중인지 확인하세요.")
 
 if __name__ == "__main__":
     run_client()

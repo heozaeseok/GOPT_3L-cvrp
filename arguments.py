@@ -27,7 +27,7 @@ def get_args():
     parser.add_argument('--render', action='store_true',
                         help='Render the environment while testing')
     
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
 
     # Config 파일 로드 로직
     try:
