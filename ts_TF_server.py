@@ -64,24 +64,41 @@ class PackingServer:
 
     def handle_request(self, data):
         route_ids = data['route']
-        loading_items = get_items_for_route_reversed(self.parser, route_ids)
+        print(f"\n[Request] Processing Route: {route_ids}")
+        
+        # 1. 고객(Node)별로 아이템을 가져와서 어떤 고객의 것인지 추적할 수 있게 구성
+        # get_items_for_route_reversed 대신 내부 로직을 직접 사용하여 노드 정보를 남깁니다.
         obs, _ = self.env.reset()
         
-        for item in loading_items:
-            self.env.unwrapped.box_creator.box_list = [item]
-            with torch.no_grad():
-                obs_tensor = torch.from_numpy(obs['obs']).float().unsqueeze(0).to(self.device)
-                mask_tensor = torch.from_numpy(obs['mask']).unsqueeze(0).to(self.device)
-                input_batch = Batch(obs=obs_tensor, mask=mask_tensor)
+        step_count = 1
+        for node_id in reversed(route_ids):
+            node_items = self.parser.items.get(node_id, []) # 해당 고객의 아이템 리스트 
+            
+            for i, item in enumerate(node_items):
+                # item은 (l, w, h) 튜플임 
+                print(f"  > Step {step_count} | Customer {node_id} - Item {i+1} {item}...", end=" ")
                 
-                logits, _ = self.policy.actor(input_batch)
-                logits[mask_tensor == 0] = -1e10
-                action = logits.argmax(dim=1).cpu().item()
+                self.env.unwrapped.box_creator.box_list = [item]
+                with torch.no_grad():
+                    obs_tensor = torch.from_numpy(obs['obs']).float().unsqueeze(0).to(self.device)
+                    mask_tensor = torch.from_numpy(obs['mask']).unsqueeze(0).to(self.device)
+                    input_batch = Batch(obs=obs_tensor, mask=mask_tensor)
+                    
+                    logits, _ = self.policy.actor(input_batch)
+                    logits[mask_tensor == 0] = -1e10
+                    action = logits.argmax(dim=1).cpu().item()
 
-            obs, _, terminated, _, _ = self.env.step(action)
-            if terminated:
-                return {"result": False}
+                obs, _, terminated, _, _ = self.env.step(action)
+                
+                if terminated:
+                    print(f"FAILED (Action: {action})")
+                    print(f"[Result] Route failed at Customer {node_id}, Item {i+1}")
+                    return {"result": False, "failed_node": node_id, "item_idx": i+1}
+                
+                print(f"OK (Action: {action})")
+                step_count += 1
 
+        print("[Result] Route successfully packed!")
         return {"result": True}
 
 def run_server():
