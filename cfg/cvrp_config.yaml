@@ -18,7 +18,7 @@ env:
 train:
   algo: PPO
   clip_param: 0.3
-  num_processes: 16            # [권장] 로컬 테스트 시 128은 메모리 부족 가능성 있음 (필요 시 조절)
+  num_processes: 1            # [권장] 로컬 테스트 시 128은 메모리 부족 가능성 있음 (필요 시 조절)
   num_steps: 5
   epoch: 1000
   last_epoch: 200  

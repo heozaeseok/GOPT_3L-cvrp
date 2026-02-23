@@ -149,7 +149,8 @@ class ActorHead(nn.Module):
 
         if self.padding_mask:
             mask = torch.as_tensor(obs.mask, dtype=torch.bool, device=self.device)
-            mask = torch.sum(mask.reshape(batch_size, -1, 2), dim=-1).bool()
+            # [수정] 아이템 3개 * 회전 2개 = 6차원 기준 마스크 합산
+            mask = torch.sum(mask.reshape(batch_size, 6, -1), dim=1).bool()
         else:
             mask = None
 
@@ -160,7 +161,6 @@ class ActorHead(nn.Module):
         logits = torch.bmm(item_embedding, ems_embedding).reshape(batch_size, -1)
 
         return logits, hidden
-    
 
 class CriticHead(nn.Module):
     def __init__(
@@ -199,7 +199,10 @@ class CriticHead(nn.Module):
     ) -> torch.Tensor:
         batch_size = obs.shape[0]
         mask = torch.as_tensor(obs.mask, dtype=torch.bool, device=self.device)
-        mask = torch.sum(mask.reshape(batch_size, -1, 2), dim=-1).bool()
+        
+        # [수정] 아이템 3개 * 회전 2개 = 6차원 기준 합산
+        mask = torch.sum(mask.reshape(batch_size, 6, -1), dim=1).bool()
+        
         if self.padding_mask:
             item_embedding, ems_embedding, _ = self.preprocess(obs.obs, mask)
         else:
@@ -215,7 +218,6 @@ class CriticHead(nn.Module):
 
         state_value = self.layer_3(joint_embedding)
         return state_value
-
 
 class ShareNet(nn.Module):
     def __init__(
@@ -295,28 +297,21 @@ def obs2input(
     container_size: Sequence[int],
     place_gen: str = "EMS",
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """ 
-        convert obsversation to input of the network
-
-    Returns:
-        hm:         (batch, 1, L, W)
-        next_size:  (batch, 2, 3)
-        placements: (batch, k_placement, 6)
-    """
     batch_size = obs.shape[0]
-    hm = obs[:, :container_size[0]*container_size[1]].reshape((batch_size, 1, container_size[0], container_size[1]))
-    next_size = obs[:, container_size[0]*container_size[1]:container_size[0]*container_size[1] + 6]
-    # [[l, w, h], [w, l, h]]
-    next_size = next_size.reshape((batch_size, 2, 3))
+    area = container_size[0] * container_size[1]
+    
+    hm = obs[:, :area].reshape((batch_size, 1, container_size[0], container_size[1]))
+    
+    # [수정] 18차원 크기 및 (batch_size, 6, 3)으로 확장
+    next_size = obs[:, area:area + 18]
+    next_size = next_size.reshape((batch_size, 6, 3))
     
     if place_gen == "EMS":
-        # (x_1, y_1, z_1, x_2, y_2, H)
-        placements = obs[:, container_size[0]*container_size[1] + 6:].reshape((batch_size, -1, 6))
+        placements = obs[:, area + 18:].reshape((batch_size, -1, 6))
     else:
-        placements = obs[:, container_size[0]*container_size[1] + 6:].reshape((batch_size, -1, 3))
+        placements = obs[:, area + 18:].reshape((batch_size, -1, 3))
 
     return hm, next_size, placements
-
 
 def init(module, weight_init, bias_init, gain=1):
     weight_init(module.weight.data, gain=gain)

@@ -1,0 +1,47 @@
+# configuration file for training 3L-CVRP (GOPT Default Baseline)
+
+seed: 5
+cuda_deterministic: True
+log_interval: 10               
+
+env:
+  id: OnlinePack-v1            
+  scheme: EMS                  
+  rot: True
+  box_type: cvrp               # [수정] 랜덤이 아닌 CVRP 데이터 로더 사용
+  container_size: [60, 25, 30] # [수정] 3L-CVRP 차량 제원
+  step:           
+  k_placement: 80              
+  
+train:
+  algo: PPO
+  clip_param: 0.3
+  num_processes: 8             # [수정] 로컬 PC 사양에 맞춰 128 -> 8 하향 조정
+  num_steps: 128               # [수정] 프로세스 감소를 보완하기 위해 한 프로세스당 수집 스텝 증가
+  epoch: 1000
+  last_epoch: 200  
+  batch_size: 128  
+  step_per_epoch: 10000        # [수정] 로컬 환경의 구동 시간을 고려하여 1 에폭당 스텝 수 조정 (40000 -> 10000)
+  repeat_per_collect: 1
+  gae_lambda: 0.96
+  reward_type:                 
+  gamma: 1                  
+
+opt:  
+  optimizer: Adam              
+  lr: 7e-5                     
+  lr_decay: True               
+  eps: 1e-5                    
+  alpha: 0.99                  
+  
+loss:
+  entropy: 0.001               
+  value: 0.5                   
+
+model:
+  padding_mask: True           # [수정] (0,0,0) 패딩 아이템 예외 처리를 위해 필수 활성화 (False -> True)
+  embed_dim: 128
+  heads: 1                     # [유지] 논문 기본값
+  num_layers: 3                # [유지] 논문 기본값
+  forward_expansion: 2         # [유지] 논문 기본값
+  dropout: 0

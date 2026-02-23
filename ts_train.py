@@ -40,6 +40,21 @@ from mycollector import PackCollector
 from cvrp_utils import CVRPParser # cvrp_utils.py가 있어야 함
  
 
+def make_env_fn(args, parser):
+    """자식 프로세스 내부에서 환경을 등록하고 생성하도록 보장하는 래퍼 함수"""
+    def _make():
+        registration_envs()  # [핵심 수정] 워커 프로세스 내부에서 환경 강제 등록
+        return gym.make(args.env.id, 
+                        container_size=args.env.container_size,
+                        enable_rotation=args.env.rot,
+                        data_type="cvrp",
+                        item_set=None, 
+                        reward_type=args.train.reward_type,
+                        action_scheme=args.env.scheme,
+                        k_placement=args.env.k_placement,
+                        cvrp_parser=parser)
+    return _make
+
 def make_envs(args):
     # 1. 인자로 받은 파일 경로 사용
     cvrp_file = args.data_path 
@@ -52,7 +67,6 @@ def make_envs(args):
     parser = CVRPParser(cvrp_file)
     
     # 2. 파싱된 정보로 환경 설정 자동 조정
-    # 파일에서 읽은 차량 제원 (Length, Width, Height)
     veh_info = parser.vehicle_info
     real_container_size = (veh_info['length'], veh_info['width'], veh_info['height'])
     
@@ -69,31 +83,13 @@ def make_envs(args):
     args.env.box_small = int(max_dim / 10)
     args.env.box_big = int(max_dim / 2)
 
-    # 3. 환경 생성 (변경된 args와 parser 전달)
+    # 3. 환경 생성 (람다 대신 래퍼 함수 사용)
     train_envs = ts.env.SubprocVectorEnv(
-        [lambda: gym.make(args.env.id, 
-                          container_size=args.env.container_size,
-                          enable_rotation=args.env.rot,
-                          data_type="cvrp",
-                          item_set=None, 
-                          reward_type=args.train.reward_type,
-                          action_scheme=args.env.scheme,
-                          k_placement=args.env.k_placement,
-                          cvrp_parser=parser) # 파서 객체 전달
-                          for _ in range(args.train.num_processes)]
+        [make_env_fn(args, parser) for _ in range(args.train.num_processes)]
     )
     
     test_envs = ts.env.SubprocVectorEnv(
-        [lambda: gym.make(args.env.id, 
-                          container_size=args.env.container_size,
-                          enable_rotation=args.env.rot,
-                          data_type="cvrp",
-                          item_set=None, 
-                          reward_type=args.train.reward_type,
-                          action_scheme=args.env.scheme,
-                          k_placement=args.env.k_placement,
-                          cvrp_parser=parser) 
-                          for _ in range(1)]
+        [make_env_fn(args, parser) for _ in range(1)]
     )
     
     train_envs.seed(args.seed)

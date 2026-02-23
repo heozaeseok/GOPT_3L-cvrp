@@ -1,7 +1,6 @@
 import numpy as np
 import copy
 import torch
-# binCreator.py 상단에 import 추가
 import random
 # cvrp_utils.py가 같은 폴더에 있어야 합니다.
 from cvrp_utils import CVRPParser, generate_random_routes, get_items_for_route_reversed
@@ -26,9 +25,10 @@ class BoxCreator(object):
             self.generate_box_size()
         return copy.deepcopy(self.box_list[:length])
 
-    def drop_box(self):
-        assert len(self.box_list) >= 0
-        self.box_list.pop(0)
+    def drop_box(self, item_idx=0):
+        # [수정] 여러 아이템 중 특정 인덱스를 선택해 버릴 수 있도록 파라미터 추가 (기본값 0)
+        assert len(self.box_list) > item_idx
+        self.box_list.pop(item_idx)
 
 
 class RandomBoxCreator(BoxCreator):
@@ -87,42 +87,71 @@ class CVRPBoxCreator(BoxCreator):
     def __init__(self, cvrp_parser: CVRPParser):
         super().__init__()
         self.parser = cvrp_parser
-        self.box_list = []
-        self.box_index = 0
+        self.node_items = [] # [수정] 1차원 리스트가 아닌 노드별 2차원 리스트: [[item1, item2], [item3], ...]
+        self.current_node_idx = 0
         
     def reset(self):
-        self.box_list.clear()
-        self.box_index = 0
+        self.node_items = []
+        self.current_node_idx = 0
         
         # 1. 학습을 위해 매번 새로운 랜덤 경로 생성
-        # generate_random_routes는 [Set_1, Set_2...]를 반환하므로 하나만 생성해서 씁니다.
-        # 여기서는 차량 1대의 경로 하나만 샘플링하여 학습에 사용합니다 (단일 차량 패킹 문제로 환원)
         route_sets = generate_random_routes(self.parser, 1) # 1세트 생성
         vehicle_routes = route_sets[0] # [Route_Veh1, Route_Veh2, ...]
         
         # 빈 경로가 아닌 것 중 하나를 랜덤 선택 (다양성 확보)
         valid_routes = [r for r in vehicle_routes if len(r) > 0]
         if not valid_routes:
-            # 만약 모든 차량 경로가 비었다면(고객 0명) Depot만 있는 경우 등
             target_route = []
         else:
             target_route = random.choice(valid_routes)
             
-        # 2. 경로의 역순(LIFO)으로 아이템 리스트 가져오기
-        # items: List of (l, w, h) -> GOPT는 (x, y, z)로 사용
-        self.all_items = get_items_for_route_reversed(self.parser, target_route)
+        # 2. 경로의 역순(LIFO)으로 아이템을 '노드 단위'로 묶어서 가져오기
+        for node_id in reversed(target_route):
+            items_in_node = self.parser.items.get(node_id, [])
+            if items_in_node:
+                # 원본 데이터를 해치지 않기 위해 리스트를 복사해서 추가
+                self.node_items.append(list(items_in_node)) 
         
-        # 3. 초기 박스 로딩 (빈 리스트일 경우 처리)
-        if not self.all_items:
-             self.all_items = [(0,0,0)] # 더미
+        # 3. 초기 박스 로딩 (빈 리스트일 경우 패딩용 더미 처리)
+        if not self.node_items:
+             self.node_items = [[(0, 0, 0)]]
+
+    def preview(self, length=3):
+        """ [수정] 한 스텝에서 볼 수 있는 후보 아이템 반환. 현재 노드의 아이템만 반환하며, 
+            지정된 length(기본 3)보다 모자란 칸은 (0,0,0)으로 패딩합니다.
+        """
+        # 경로 상의 모든 노드를 다 방문했으면 더미 반환
+        if self.current_node_idx >= len(self.node_items):
+            return [(0, 0, 0) for _ in range(length)]
+        
+        cur_items = self.node_items[self.current_node_idx]
+        result = []
+        
+        for i in range(length):
+            if i < len(cur_items):
+                result.append(cur_items[i])
+            else:
+                result.append((0, 0, 0)) # Padding
+                
+        return result
+
+    def drop_box(self, item_idx=0):
+        """ [수정] 에이전트가 선택한 특정 인덱스(0, 1, 2 중 하나)의 아이템을 현재 노드 리스트에서 제거.
+            현재 노드의 아이템이 다 소진되면 다음 노드로 이동합니다.
+        """
+        if self.current_node_idx < len(self.node_items):
+            cur_items = self.node_items[self.current_node_idx]
+            
+            # env.py에서 패딩된 인덱스는 이미 마스킹되어 오지 않겠지만 방어 코드 작성
+            if item_idx < len(cur_items):
+                cur_items.pop(item_idx)
+            
+            # 현재 노드 아이템을 모두 적재했다면 다음 노드로 인덱스 이동
+            if len(cur_items) == 0:
+                self.current_node_idx += 1
 
     def generate_box_size(self, **kwargs):
-        """환경에서 drop_box() 호출 후 다음 박스를 준비할 때 사용"""
-        if self.box_index < len(self.all_items):
-            self.box_list.append(self.all_items[self.box_index])
-            self.box_index += 1
-        else:
-            # 아이템 소진 시 (0,0,0)을 주어 환경이 종료 조건을 감지하게 함
-            # (env.py의 step 함수 로직에 따라 다를 수 있으나 보통 크기가 0이면 무시되거나 종료됨)
-            self.box_list.append((1000, 1000, 1000)) # 혹은 매우 큰 값을 주어 실패하게 하여 종료 유도
-            # *참고*: GOPT env.py는 보통 place_box 실패 시 종료됩니다.
+        """ [수정] CVRPBoxCreator에서는 preview가 동적으로 node_items를 참조하므로
+            별도로 box_list에 append하는 기존 로직이 불필요합니다.
+        """
+        pass
