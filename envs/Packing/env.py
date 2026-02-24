@@ -204,10 +204,29 @@ class PackingEnv(gym.Env):
         pos, rot, size, item_idx = self.idx2pos(action)
         box_to_place = self.next_boxes[item_idx]
  
-        # [추가] 패딩 아이템(0,0,0)이 선택되었다는 것은 남은 아이템이나 유효 마스크가 없는 상태임
+        # 공통 info 생성 함수
+        def create_info_and_print(is_done):
+            packed_items = len(self.container.boxes)
+            total_items = getattr(self.box_creator, 'total_route_items', 0)
+            route = getattr(self.box_creator, 'current_route', [])
+            is_success = (packed_items == total_items) and (total_items > 0)
+            
+            info_dict = {
+                'counter': packed_items, 
+                'ratio': self.container.get_volume_ratio(),
+                'route': route,
+                'total_items': total_items,
+                'is_success': is_success
+            }
+            
+            if is_done:
+                status = "SUCCESS" if is_success else "FAIL"
+                print(f"✅ [Test Result] Route: {route} | Packed: {packed_items}/{total_items} | Result: {status} | Space Ratio: {info_dict['ratio']:.4f}")
+            return info_dict
+
         if sum(box_to_place) == 0:
             done = True
-            info = {'counter': len(self.container.boxes), 'ratio': self.container.get_volume_ratio()}
+            info = create_info_and_print(done)
             return self.cur_observation, 0.0, done, False, info
 
         succeeded = self.container.place_box(box_to_place, pos, rot)
@@ -217,15 +236,12 @@ class PackingEnv(gym.Env):
             reward = -0.1 
             self.render_box = [[0, 0, 0], [0, 0, 0]]
             
-            # [수정] 실패 후 갱신된 마스크가 모두 0이면 에피소드 종료
             obs_dict = self.cur_observation
             done = (obs_dict["mask"].sum() == 0)
-            
-            info = {'counter': len(self.container.boxes), 'ratio': self.container.get_volume_ratio()}
+            info = create_info_and_print(done)
             return obs_dict, reward, done, False, info
 
         self.failed_actions.clear()
-
         box_ratio = self.get_box_ratio(box_to_place)
         old_node_idx = getattr(self.box_creator, 'current_node_idx', 0)
         
@@ -243,11 +259,9 @@ class PackingEnv(gym.Env):
         else:
             reward = box_ratio
             
-        # [수정] 성공 후 갱신된 마스크가 모두 0이면(아이템 소진 또는 공간 부족) 에피소드 종료
         obs_dict = self.cur_observation
         done = (obs_dict["mask"].sum() == 0)
-        
-        info = {'counter': len(self.container.boxes), 'ratio': self.container.get_volume_ratio()}
+        info = create_info_and_print(done)
 
         return obs_dict, reward, done, False, info
 

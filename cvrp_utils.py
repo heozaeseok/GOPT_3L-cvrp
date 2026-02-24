@@ -4,9 +4,9 @@ import random
 class CVRPParser:
     def __init__(self, filepath):
         self.filepath = filepath
-        self.vehicle_info = {} # {count, capacity, h, w, l}
-        self.nodes = {}        # {id: {x, y, demand}}
-        self.items = {}        # {node_id: list of [l, w, h]}
+        self.vehicle_info = {} 
+        self.nodes = {}        
+        self.items = {}        
         self.num_customers = 0
         
         self._parse()
@@ -15,61 +15,55 @@ class CVRPParser:
         with open(self.filepath, 'r') as f:
             lines = [line.strip() for line in f.readlines() if line.strip()]
 
-        iterator = iter(lines)
-        
-        try:
-            while True:
-                line = next(iterator)
-                
-                # 메타데이터 파싱
-                if "number of customers" in line:
-                    self.num_customers = int(line.split()[0])
-                elif "number of vehicles" in line:
-                    self.vehicle_info['count'] = int(line.split()[0])
-                elif "Capacity - height - width - length" in line:
-                    # 예: 4500 30 25 60 -> Capacity=4500, H=30, W=25, L=60
-                    vals = list(map(int, next(iterator).split()))
-                    self.vehicle_info['capacity'] = vals[0] # 무게 제한
-                    self.vehicle_info['height'] = vals[1]
-                    self.vehicle_info['width'] = vals[2]
-                    self.vehicle_info['length'] = vals[3]
+        idx = 0
+        while idx < len(lines):
+            line = lines[idx]
+            
+            if "number of customers" in line:
+                self.num_customers = int(line.split()[0])
+            elif "number of vehicles" in line:
+                self.vehicle_info['count'] = int(line.split()[0])
+            elif "Capacity - height - width - length" in line:
+                idx += 1
+                vals = list(map(int, lines[idx].split()))
+                self.vehicle_info['capacity'] = vals[0] 
+                self.vehicle_info['height'] = vals[1]
+                self.vehicle_info['width'] = vals[2]
+                self.vehicle_info['length'] = vals[3]
 
-                elif "Node - x - y - demand" in line:
-                    # 노드 정보 파싱
-                    # 0번(Depot)부터 num_customers번까지
-                    for _ in range(self.num_customers + 1): 
-                        node_vals = list(map(float, next(iterator).split()))
-                        node_id = int(node_vals[0])
-                        self.nodes[node_id] = {
-                            'x': node_vals[1], 
-                            'y': node_vals[2], 
-                            'demand': node_vals[3] # 노드의 무게(수요)
-                        }
-                        self.items[node_id] = []
+            elif "Node - x - y - demand" in line:
+                for _ in range(self.num_customers + 1): 
+                    idx += 1
+                    node_vals = list(map(float, lines[idx].split()))
+                    node_id = int(node_vals[0])
+                    self.nodes[node_id] = {
+                        'x': node_vals[1], 
+                        'y': node_vals[2], 
+                        'demand': node_vals[3] 
+                    }
+                    self.items[node_id] = []
 
-                elif "Node - number of items - h - w - l" in line:
-                    # 아이템 정보 파싱
-                    while True:
-                        try:
-                            item_line = next(iterator)
-                            if "Instance" in item_line: 
-                                break
-                            
-                            parts = list(map(str, item_line.split()))
-                            node_id = int(parts[0])
-                            
-                            idx = 2
-                            while idx < len(parts):
-                                h = int(parts[idx])
-                                w = int(parts[idx+1])
-                                l = int(parts[idx+2])
-                                # GOPT는 (l, w, h) 순서로 저장 (x, y, z)
-                                self.items[node_id].append((l, w, h))
-                                idx += 4
-                        except StopIteration:
-                            break
-        except StopIteration:
-            pass
+            elif "Node - number of items - h - w - l" in line:
+                idx += 1
+                while idx < len(lines):
+                    item_line = lines[idx]
+                    if "Instance" in item_line: 
+                        break
+                    
+                    parts = list(map(str, item_line.split()))
+                    node_id = int(parts[0])
+                    
+                    part_idx = 2
+                    while part_idx < len(parts):
+                        h = int(parts[part_idx])
+                        w = int(parts[part_idx+1])
+                        l = int(parts[part_idx+2])
+                        self.items[node_id].append((l, w, h))
+                        part_idx += 4
+                    idx += 1
+                continue 
+            
+            idx += 1
 
 def generate_random_routes(parser: CVRPParser, num_generated_sets: int):
     """

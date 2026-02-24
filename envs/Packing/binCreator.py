@@ -87,35 +87,35 @@ class CVRPBoxCreator(BoxCreator):
     def __init__(self, cvrp_parser: CVRPParser):
         super().__init__()
         self.parser = cvrp_parser
-        self.node_items = [] # [수정] 1차원 리스트가 아닌 노드별 2차원 리스트: [[item1, item2], [item3], ...]
+        self.node_items = [] 
         self.current_node_idx = 0
         
     def reset(self):
         self.node_items = []
         self.current_node_idx = 0
         
-        # 1. 학습을 위해 매번 새로운 랜덤 경로 생성
-        route_sets = generate_random_routes(self.parser, 1) # 1세트 생성
-        vehicle_routes = route_sets[0] # [Route_Veh1, Route_Veh2, ...]
+        route_sets = generate_random_routes(self.parser, 1) 
+        vehicle_routes = route_sets[0] 
         
-        # 빈 경로가 아닌 것 중 하나를 랜덤 선택 (다양성 확보)
         valid_routes = [r for r in vehicle_routes if len(r) > 0]
         if not valid_routes:
             target_route = []
         else:
             target_route = random.choice(valid_routes)
+
+        self.current_route = target_route
+        self.total_route_items = 0 # 추가됨: 해당 경로의 총 아이템 개수
             
-        # 2. 경로의 역순(LIFO)으로 아이템을 '노드 단위'로 묶어서 가져오기
         for node_id in reversed(target_route):
             items_in_node = self.parser.items.get(node_id, [])
             if items_in_node:
-                # 원본 데이터를 해치지 않기 위해 리스트를 복사해서 추가
                 self.node_items.append(list(items_in_node)) 
+                self.total_route_items += len(items_in_node) # 누적
         
-        # 3. 초기 박스 로딩 (빈 리스트일 경우 패딩용 더미 처리)
         if not self.node_items:
              self.node_items = [[(0, 0, 0)]]
-
+             self.total_route_items = 0
+             
     def preview(self, length=3):
         """ [수정] 한 스텝에서 볼 수 있는 후보 아이템 반환. 현재 노드의 아이템만 반환하며, 
             지정된 length(기본 3)보다 모자란 칸은 (0,0,0)으로 패딩합니다.

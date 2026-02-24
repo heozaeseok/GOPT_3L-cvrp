@@ -31,7 +31,7 @@ def test(args):
     # CVRP 데이터 파싱 및 환경 설정 (train.py와 동일하게 맞춤)
     # 주의: 실행 시 args.data_path가 올바른 데이터 파일을 가리키고 있어야 합니다.
     #cvrp_file = args.data_path 
-    cvrp_file = r"C:\Users\USER\Desktop\SDO\GOPT_cvrp\3L_CVRP\3l_cvrp14.txt"
+    cvrp_file = r"C:\Users\USER\Desktop\SDO\GOPT_cvrp\3L_CVRP\3l_cvrp01.txt"
     if not os.path.exists(cvrp_file):
         print(f"Error: Data file not found at {cvrp_file}")
         print("Please check 'args.data_path' in arguments.py or pass it via command line.")
@@ -85,21 +85,19 @@ def test(args):
     
     policy.eval()
     
-    # 모델 로드
+    # 모델 로드 (try-except 제거)
     print(f"Loading model from: {args.ckp}")
-    try:
-        policy.load_state_dict(torch.load(args.ckp, map_location=device))
-        print("Model loaded successfully.")
-    except FileNotFoundError:
+    if not os.path.exists(args.ckp):
         print(f"No model found at {args.ckp}")
         exit()
+        
+    policy.load_state_dict(torch.load(args.ckp, map_location=device))
+    print("Model loaded successfully.")
 
     test_collector = PackCollector(policy, test_env)
 
     # Evaluation
     print(f"Start testing (Render: {args.render})...")
-    # render 인자에 지연시간(초)을 넣으면 속도 조절 가능 (예: render=0.05)
-    # 단순히 True면 최대한 빠르게 렌더링
     result = test_collector.collect(n_episode=args.test_episode, render=args.render)
     
     for i in range(args.test_episode):
@@ -122,7 +120,7 @@ if __name__ == '__main__':
     args.train.step_per_collect = args.train.num_processes * args.train.num_steps  
 
     #모델 경로
-    args.ckp = r"C:\Users\USER\Desktop\SDO\policy_step_best6.pth"
+    args.ckp = r"C:\Users\USER\Desktop\SDO\learned_model\policy_step_best7.pth"
     args.render = True
     #테스트 에피소드 수
     args.test_episode = 1
