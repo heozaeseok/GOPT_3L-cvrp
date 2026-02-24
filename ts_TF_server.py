@@ -8,8 +8,7 @@ import json
 from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR
 from tianshou.data import Batch
 
-# 기존 프로젝트 모듈 임포트
-from cvrp_utils import CVRPParser, get_items_for_route_reversed
+from cvrp_utils import CVRPParser
 from ts_train import build_net
 from masked_ppo import MaskedPPOPolicy
 from tools import registration_envs, set_seed, CategoricalMasked
@@ -27,7 +26,6 @@ class PackingServer:
         self.policy = self._init_policy()
         self.policy.eval()
         
-        # 서버 시작 시 파일을 미리 로드
         self.parser, self.env = self._load_resources()
 
     def _init_policy(self):
@@ -36,13 +34,19 @@ class PackingServer:
             actor=self.actor, critic=self.critic, optim=optim,
             dist_fn=CategoricalMasked, action_space=gym.spaces.Discrete(self.args.env.k_placement * 2)
         )
+        
+        if not os.path.exists(self.args.ckp):
+            print(f"Error: Model file not found at {self.args.ckp}")
+            sys.exit()
+            
         policy.load_state_dict(torch.load(self.args.ckp, map_location=self.device))
         return policy
 
     def _load_resources(self):
-        file_path = f"C:/Users/USER/Desktop/SDO/GOPT_cvrp/3L_CVRP/3l_cvrp{self.file_id}.txt"
+        file_path = rf"C:\Users\USER\Desktop\SDO\GOPT_cvrp\3L_CVRP\3l_cvrp{self.file_id}.txt"
         if not os.path.exists(file_path):
-            raise FileNotFoundError(f"File not found: {file_path}")
+            print(f"Error: Data file not found at {file_path}")
+            sys.exit()
         
         parser = CVRPParser(file_path)
         veh_info = parser.vehicle_info
@@ -52,12 +56,13 @@ class PackingServer:
             self.args.env.id,
             container_size=container_size,
             enable_rotation=self.args.env.rot,
-            data_type="random",
-            item_set=[(1,1,1)],
+            data_type="cvrp", 
+            item_set=None,
             reward_type=self.args.train.reward_type,
             action_scheme=self.args.env.scheme,
             k_placement=self.args.env.k_placement,
-            is_render=False
+            is_render=False,
+            cvrp_parser=parser 
         )
         print(f"[*] File {self.file_id} loaded successfully.")
         return parser, env
@@ -66,50 +71,64 @@ class PackingServer:
         route_ids = data['route']
         print(f"\n[Request] Processing Route: {route_ids}")
         
-        # 1. 고객(Node)별로 아이템을 가져와서 어떤 고객의 것인지 추적할 수 있게 구성
-        # get_items_for_route_reversed 대신 내부 로직을 직접 사용하여 노드 정보를 남깁니다.
-        obs, _ = self.env.reset()
+        # 1. 환경 초기화
+        self.env.reset()
         
-        step_count = 1
+        # 2. 요청받은 경로를 강제로 환경(BoxCreator)에 주입
+        box_creator = self.env.unwrapped.box_creator
+        box_creator.current_route = route_ids
+        box_creator.node_items = []
+        box_creator.total_route_items = 0
+        
         for node_id in reversed(route_ids):
-            node_items = self.parser.items.get(node_id, []) # 해당 고객의 아이템 리스트 
+            items_in_node = self.parser.items.get(node_id, [])
+            if items_in_node:
+                box_creator.node_items.append(list(items_in_node))
+                box_creator.total_route_items += len(items_in_node)
+                
+        if not box_creator.node_items:
+            box_creator.node_items = [[(0, 0, 0)]]
+            box_creator.total_route_items = 0
             
-            for i, item in enumerate(node_items):
-                # item은 (l, w, h) 튜플임 
-                print(f"  > Step {step_count} | Customer {node_id} - Item {i+1} {item}...", end=" ")
+        box_creator.current_node_idx = 0
+        
+        # 3. 주입된 데이터에 맞게 최신 관측값(obs) 갱신
+        obs_dict = self.env.unwrapped.cur_observation
+        terminated = False
+        
+        # 4. 에이전트 행동 반복 수행
+        while not terminated:
+            with torch.no_grad():
+                obs_tensor = torch.from_numpy(obs_dict['obs']).float().unsqueeze(0).to(self.device)
+                mask_tensor = torch.from_numpy(obs_dict['mask']).unsqueeze(0).to(self.device)
+                input_batch = Batch(obs=obs_tensor, mask=mask_tensor)
                 
-                self.env.unwrapped.box_creator.box_list = [item]
-                with torch.no_grad():
-                    obs_tensor = torch.from_numpy(obs['obs']).float().unsqueeze(0).to(self.device)
-                    mask_tensor = torch.from_numpy(obs['mask']).unsqueeze(0).to(self.device)
-                    input_batch = Batch(obs=obs_tensor, mask=mask_tensor)
-                    
-                    logits, _ = self.policy.actor(input_batch)
-                    logits[mask_tensor == 0] = -1e10
-                    action = logits.argmax(dim=1).cpu().item()
+                logits, _ = self.policy.actor(input_batch)
+                logits[mask_tensor == 0] = -1e10
+                action = logits.argmax(dim=1).cpu().item()
 
-                obs, _, terminated, _, _ = self.env.step(action)
-                
-                if terminated:
-                    print(f"FAILED (Action: {action})")
-                    print(f"[Result] Route failed at Customer {node_id}, Item {i+1}")
-                    return {"result": False, "failed_node": node_id, "item_idx": i+1}
-                
-                print(f"OK (Action: {action})")
-                step_count += 1
+            obs_dict, reward, terminated, truncated, info = self.env.step(action)
 
-        print("[Result] Route successfully packed!")
-        return {"result": True}
+        # 5. 최종 결과 추출 (env.py에서 info에 담아준 값 활용)
+        is_success = info.get('is_success', False)
+        packed = info.get('counter', 0)
+        total = info.get('total_items', 0)
+        
+        status = "SUCCESS" if is_success else "FAILED"
+        print(f"[Result] {status} | Route packed: {packed}/{total}")
+        
+        return {"result": is_success, "packed": packed, "total": total}
 
 def run_server():
     parser = argparse.ArgumentParser()
     parser.add_argument('--file', type=int, required=True, help="파일 ID 지정")
     parser.add_argument('--port', type=int, default=9999)
-    cmd_args = parser.parse_args()
+    # 기존 인자와 충돌하지 않도록 모르는 인자는 분리
+    cmd_args, unknown = parser.parse_known_args()
 
     registration_envs()
     args = arguments.get_args()
-    args.ckp = r"C:\Users\USER\Desktop\SDO\policy_step_best6.pth"
+    args.ckp = r"C:\Users\USER\Desktop\SDO\learned_model\policy_step_best7.pth"
     
     server_logic = PackingServer(args, cmd_args.file)
     
