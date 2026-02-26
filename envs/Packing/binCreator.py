@@ -155,3 +155,27 @@ class CVRPBoxCreator(BoxCreator):
             별도로 box_list에 append하는 기존 로직이 불필요합니다.
         """
         pass
+
+class EvalBoxCreator(CVRPBoxCreator):
+    def __init__(self, cvrp_parser: CVRPParser):
+        super().__init__(cvrp_parser)
+        self.eval_route = []
+
+    def set_route(self, route):
+        self.eval_route = route
+
+    def reset(self):
+        self.node_items = []
+        self.current_node_idx = 0
+        self.current_route = self.eval_route
+        self.total_route_items = 0
+        
+        for node_id in reversed(self.eval_route):
+            items_in_node = self.parser.items.get(node_id, [])
+            if items_in_node:
+                self.node_items.append(list(items_in_node))
+                self.total_route_items += len(items_in_node)
+        
+        if not self.node_items:
+             self.node_items = [[(0, 0, 0)]]
+             self.total_route_items = 0
