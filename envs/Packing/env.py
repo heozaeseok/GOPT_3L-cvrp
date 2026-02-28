@@ -214,7 +214,7 @@ class PackingEnv(gym.Env):
             info_dict = {
                 'counter': packed_items, 
                 'ratio': self.container.get_volume_ratio(),
-                'route': route,
+                'route': str(route),
                 'total_items': total_items,
                 'is_success': is_success
             }
