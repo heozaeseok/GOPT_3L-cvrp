@@ -120,7 +120,7 @@ if __name__ == '__main__':
     args.train.step_per_collect = args.train.num_processes * args.train.num_steps  
 
     #모델 경로
-    args.ckp = r"C:\Users\USER\Desktop\SDO\learned_model\policy_step_best7.pth"
+    args.ckp = r"C:\Users\USER\Desktop\SDO\GOPT_cvrp\learned_model\policy_step_best7.pth"
     args.render = True
     #테스트 에피소드 수
     args.test_episode = 1
