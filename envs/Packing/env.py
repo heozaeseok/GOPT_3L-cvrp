@@ -23,7 +23,7 @@ class PackingEnv(gym.Env):
         k_placement=100,
         is_render=False,
         is_hold_on=False,
-        cvrp_parser=None,
+        cvrp_parsers=None,
         **kwags
     ) -> None:
         self.bin_size = container_size
@@ -59,8 +59,8 @@ class PackingEnv(gym.Env):
                 self.box_creator = CuttingBoxCreator(container_size, low, self.can_rotate)
             if data_type == "cvrp":
                 print(f"using items generated from CVRP routes")
-                assert cvrp_parser is not None, "CVRP Parser must be provided for cvrp data_type"
-                self.box_creator = CVRPBoxCreator(cvrp_parser)
+                assert cvrp_parsers is not None
+                self.box_creator = CVRPBoxCreator(cvrp_parsers)
 
             assert isinstance(self.box_creator, BoxCreator)
         if load_test_data:
