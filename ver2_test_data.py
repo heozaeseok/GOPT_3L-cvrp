@@ -47,7 +47,7 @@ def evaluate_500():
         action_scheme=args.env.scheme,
         k_placement=args.env.k_placement,
         is_render=False,
-        cvrp_parser=parser         
+        cvrp_parsers=parser         
     )
     
     # 평가용 BoxCreator 주입
@@ -65,7 +65,7 @@ def evaluate_500():
         action_space=env.action_space,
     )
     
-    ckp_path = r"C:\Users\USER\Desktop\SDO\GOPT_cvrp\learned_model\policy_step_best7.pth"
+    ckp_path = r"C:\Users\USER\Desktop\SDO\GOPT_cvrp\learned_model\ver2\policy_step_best8.pth"
     policy.load_state_dict(torch.load(ckp_path, map_location=device))
     policy.eval()
 
