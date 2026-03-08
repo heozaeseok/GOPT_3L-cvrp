@@ -221,7 +221,7 @@ class PackingEnv(gym.Env):
             
             if is_done:
                 status = "SUCCESS" if is_success else "FAIL"
-                #print(f"✅ [Test Result] Route: {route} | Packed: {packed_items}/{total_items} | Result: {status} | Space Ratio: {info_dict['ratio']:.4f}")
+                print(f"✅ [Test Result] Route: {route} | Packed: {packed_items}/{total_items} | Result: {status} | Space Ratio: {info_dict['ratio']:.4f}")
             return info_dict
 
         if sum(box_to_place) == 0:

@@ -164,7 +164,8 @@ class CVRPBoxCreator(BoxCreator):
 
 class EvalBoxCreator(CVRPBoxCreator):
     def __init__(self, cvrp_parser: CVRPParser):
-        super().__init__(cvrp_parser)
+        super().__init__([cvrp_parser]) 
+        self.parser = cvrp_parser 
         self.eval_route = []
 
     def set_route(self, route):
