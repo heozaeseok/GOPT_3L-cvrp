@@ -31,7 +31,7 @@ def test(args):
     # CVRP 데이터 파싱 및 환경 설정 (train.py와 동일하게 맞춤)
     # 주의: 실행 시 args.data_path가 올바른 데이터 파일을 가리키고 있어야 합니다.
     #cvrp_file = args.data_path 
-    cvrp_file = r"C:\Users\USER\Desktop\SDO\GOPT_cvrp\3L_CVRP\3l_cvrp01.txt"
+    cvrp_file = r"C:\Users\USER\Desktop\SDO\GOPT_cvrp\3L_CVRP\3l_cvrp14.txt"
     if not os.path.exists(cvrp_file):
         print(f"Error: Data file not found at {cvrp_file}")
         print("Please check 'args.data_path' in arguments.py or pass it via command line.")
@@ -57,7 +57,7 @@ def test(args):
         action_scheme=args.env.scheme,
         k_placement=args.env.k_placement,
         is_render=args.render,     # 렌더링 여부
-        cvrp_parser=parser         # 파서 객체 전달
+        cvrp_parsers=[parser]         # 파서 객체 전달
     )
 
     # network
@@ -120,7 +120,7 @@ if __name__ == '__main__':
     args.train.step_per_collect = args.train.num_processes * args.train.num_steps  
 
     #모델 경로
-    args.ckp = r"C:\Users\USER\Desktop\SDO\GOPT_cvrp\learned_model\policy_step_best7.pth"
+    args.ckp = r"C:\Users\USER\Desktop\SDO\GOPT_cvrp\learned_model\ver2\policy_step_best_0310.pth"
     args.render = True
     #테스트 에피소드 수
     args.test_episode = 1
