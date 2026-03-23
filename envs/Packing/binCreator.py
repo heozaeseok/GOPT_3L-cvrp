@@ -86,32 +86,52 @@ class LoadBoxCreator(BoxCreator):
 class CVRPBoxCreator(BoxCreator):
     def __init__(self, cvrp_parsers: list):
         super().__init__()
-        self.parsers = cvrp_parsers # 리스트로 저장
-        self.parser = None # 현재 에피소드에서 사용할 파서
+        self.parsers = cvrp_parsers # 로드된 모든 텍스트 파일 파서 리스트
+        self.parser = None          # 현재 선택된 파서
+        
+        # 순차적 학습을 위한 상태 변수
+        self.current_route_set = [] # 현재 파일에서 생성된 전체 차량 경로들의 리스트
+        self.route_index = 0        # 현재 세트에서 몇 번째 경로(차량)를 학습 중인지 인덱스
+        
         self.node_items = [] 
         self.current_node_idx = 0
+        self.current_route = []
+        self.total_route_items = 0
         
     def reset(self):
+        """
+        에피소드 시작 시 호출됩니다.
+        현재 파일의 모든 차량 경로를 다 학습했다면 새로운 파일을 고르고 경로 세트를 생성합니다.
+        """
+        # 1. 처음 시작하거나, 현재 파일의 모든 경로(차량)를 다 학습했을 경우
+        if not self.current_route_set or self.route_index >= len(self.current_route_set):
+            self.current_route_set = []
+            while not self.current_route_set:
+                # 텍스트 파일 하나를 무작위로 선택
+                self.parser = random.choice(self.parsers)
+                # 해당 파일의 모든 노드를 방문하는 '전체 경로 세트' 1개를 생성
+                # 수정된 cvrp_utils.py의 로직에 의해 모든 아이템이 포함된 세트가 반환됨
+                route_sets = generate_random_routes(self.parser, 1) 
+                
+                if route_sets:
+                    # 비어있지 않은 실제 노드가 포함된 경로들만 필터링하여 저장
+                    self.current_route_set = [r for r in route_sets[0] if len(r) > 0]
+            
+            # 새 파일을 시작하므로 경로 인덱스 초기화
+            self.route_index = 0
+            print(f"--- [New File] {self.parser.filepath} | Routes to train: {len(self.current_route_set)} ---")
+
+        # 2. 현재 세트에서 순서대로 다음 경로(차량)를 선택
+        target_route = self.current_route_set[self.route_index]
+        self.route_index += 1 # 다음 reset 시에는 다음 차량 경로를 가져오도록 증가
+        
+        # 3. 선택된 단일 경로에 대한 아이템 리스트 구성 (에피소드 데이터 설정)
+        self.current_route = target_route
         self.node_items = []
         self.current_node_idx = 0
-        
-        # 유효한 경로가 생성될 때까지 파서를 다시 무작위로 뽑으며 반복
-        route_sets = []
-        while not route_sets:
-            self.parser = random.choice(self.parsers)
-            route_sets = generate_random_routes(self.parser, 1) 
+        self.total_route_items = 0
             
-        vehicle_routes = route_sets[0]
-        
-        valid_routes = [r for r in vehicle_routes if len(r) > 0]
-        if not valid_routes:
-            target_route = []
-        else:
-            target_route = random.choice(valid_routes)
-
-        self.current_route = target_route
-        self.total_route_items = 0 # 해당 경로의 총 아이템 개수 누적
-            
+        # LIFO(Last-In-First-Out)를 위해 경로 역순으로 노드 배치
         for node_id in reversed(target_route):
             items_in_node = self.parser.items.get(node_id, [])
             if items_in_node:
