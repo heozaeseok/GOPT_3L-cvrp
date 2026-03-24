@@ -11,6 +11,8 @@ from masked_ppo import MaskedPPOPolicy
 from cvrp_utils import CVRPParser
 from binCreator import EvalBoxCreator
 
+
+
 #전역 초기화 (C++에서 import 시 1회만 실행)
 args = arguments.get_args()
 args.train.algo = args.train.algo.upper()
@@ -19,8 +21,9 @@ device = torch.device("cuda" if args.cuda and torch.cuda.is_available() else "cp
 set_seed(args.seed, args.cuda, args.cuda_deterministic)
 
 # 경로 설정
-cvrp_file = r"C:\Users\USER\Desktop\SDO\GOPT_cvrp\3L_CVRP\3l_cvrp01.txt"
-args.ckp = r"C:\Users\USER\Desktop\SDO\learned_model\policy_step_best7.pth"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+cvrp_file = os.path.join(BASE_DIR, "3L_CVRP", "3l_cvrp02.txt")
+args.ckp = os.path.join(BASE_DIR, "learned_model", "ver2", "policy_step_best_0310.pth")
 
 parser = CVRPParser(cvrp_file)
 veh_info = parser.vehicle_info
