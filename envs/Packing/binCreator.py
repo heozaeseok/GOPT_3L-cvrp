@@ -2,8 +2,7 @@ import numpy as np
 import copy
 import torch
 import random
-# cvrp_utils.py가 같은 폴더에 있어야 합니다.
-from cvrp_utils import CVRPParser, generate_random_routes, get_items_for_route_reversed
+from cvrp_utils import CVRPParser, generate_random_routes, get_items_for_route_reversed, generate_saving_routes
 
 
 class BoxCreator(object):
@@ -99,48 +98,48 @@ class CVRPBoxCreator(BoxCreator):
         self.total_route_items = 0
         
     def reset(self):
-        """
-        에피소드 시작 시 호출됩니다.
-        현재 파일의 모든 차량 경로를 다 학습했다면 새로운 파일을 고르고 경로 세트를 생성합니다.
-        """
-        # 1. 처음 시작하거나, 현재 파일의 모든 경로(차량)를 다 학습했을 경우
-        if not self.current_route_set or self.route_index >= len(self.current_route_set):
-            self.current_route_set = []
-            while not self.current_route_set:
-                # 텍스트 파일 하나를 무작위로 선택
-                self.parser = random.choice(self.parsers)
-                # 해당 파일의 모든 노드를 방문하는 '전체 경로 세트' 1개를 생성
-                # 수정된 cvrp_utils.py의 로직에 의해 모든 아이템이 포함된 세트가 반환됨
-                route_sets = generate_random_routes(self.parser, 1) 
+        while True:
+            self.parser = random.choice(self.parsers)
+            # 1. Savings + Two-opt로 꽉 채워진 최소 경로 세트 생성
+            optimized_routes = generate_saving_routes(self.parser)
+            
+            max_k = self.parser.vehicle_info.get('count', 5)
+            
+            # 2. 차량 대수 초과 시 스킵 (요청하신 에피소드 종료 로직)
+            if len(optimized_routes) > max_k:
+                # print(f"!!! [Capacity Exceeded] Instance {self.parser.filepath} needs {len(optimized_routes)} vehicles. Skipping...")
+                continue 
                 
-                if route_sets:
-                    # 비어있지 않은 실제 노드가 포함된 경로들만 필터링하여 저장
-                    self.current_route_set = [r for r in route_sets[0] if len(r) > 0]
-            
-            # 새 파일을 시작하므로 경로 인덱스 초기화
+            # 3. 유효한 경로 세트 저장 및 차량 대수 패딩
+            self.current_route_set = [r for r in optimized_routes if len(r) > 0]
+            while len(self.current_route_set) < max_k:
+                self.current_route_set.append([])
+                
+            # --- [추가 필사 로직] ---
+            # 4. 첫 번째 경로(차량)를 선택하여 실제 적재할 아이템 로드
             self.route_index = 0
-            print(f"--- [New File] {self.parser.filepath} | Routes to train: {len(self.current_route_set)} ---")
-
-        # 2. 현재 세트에서 순서대로 다음 경로(차량)를 선택
-        target_route = self.current_route_set[self.route_index]
-        self.route_index += 1 # 다음 reset 시에는 다음 차량 경로를 가져오도록 증가
-        
-        # 3. 선택된 단일 경로에 대한 아이템 리스트 구성 (에피소드 데이터 설정)
-        self.current_route = target_route
-        self.node_items = []
-        self.current_node_idx = 0
-        self.total_route_items = 0
+            valid_routes = [r for r in self.current_route_set if len(r) > 0]
+            self.current_route = random.choice(valid_routes)
             
-        # LIFO(Last-In-First-Out)를 위해 경로 역순으로 노드 배치
-        for node_id in reversed(target_route):
-            items_in_node = self.parser.items.get(node_id, [])
-            if items_in_node:
-                self.node_items.append(list(items_in_node)) 
-                self.total_route_items += len(items_in_node)
-        
-        if not self.node_items:
-             self.node_items = [[(0, 0, 0)]]
-             self.total_route_items = 0
+            self.node_items = []
+            self.current_node_idx = 0
+            self.total_route_items = 0
+            
+            # LIFO를 위해 경로 역순으로 노드 방문
+            for node_id in reversed(self.current_route):
+                items_in_node = self.parser.items.get(node_id, [])
+                if items_in_node:
+                    self.node_items.append(list(items_in_node))
+                    self.total_route_items += len(items_in_node)
+            
+            # 빈 경로인 경우 방어 코드
+            if not self.node_items:
+                self.node_items = [[(0, 0, 0)]]
+                self.total_route_items = 0
+                
+            break # 세팅 완료
+                
+        self.route_index = 0
              
     def preview(self, length=3):
         """ [수정] 한 스텝에서 볼 수 있는 후보 아이템 반환. 현재 노드의 아이템만 반환하며, 
