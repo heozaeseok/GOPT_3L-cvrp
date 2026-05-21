@@ -14,7 +14,6 @@ Create Date: 4/14/2022
 #     id='Pack-v0',
 #     entry_point='problems.OnlinePacking:PackingGame',
 # )
-from .env import PackingEnv
+from .env import PackingEnv, PackingEnvNoSup
 
 __version__ = "0.0.1"
-

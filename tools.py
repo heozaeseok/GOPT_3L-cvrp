@@ -38,7 +38,10 @@ def registration_envs():
         id='OnlinePack-v1',
         entry_point='envs.Packing:PackingEnv',
     )
-    
+    register(
+        id='OnlinePack-v1-NoSup',
+        entry_point='envs.Packing:PackingEnvNoSup',
+    )
 
 def load_policy(load_path, model, device="cpu"):
     print(f"load model from: {load_path}")

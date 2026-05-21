@@ -13,10 +13,11 @@ from .box import Box
 
 
 class Container(object):
-    def __init__(self, length=10, width=10, height=10, rotation=True):
+    def __init__(self, length=10, width=10, height=10, rotation=True, support_constraint=True):
         self.dimension = np.array([length, width, height])
         self.heightmap = np.zeros(shape=(length, width), dtype=np.int32)
         self.can_rotate = rotation
+        self.support_constraint = support_constraint
         # packed box list
         self.boxes = []
         # record rotation information
@@ -110,7 +111,6 @@ class Container(object):
 
         elif scheme == "EP":
             candidates_xy, extra_corner_xy = self.candidate_from_EP(next_box, self.can_rotate)
-            # extra_corner_xy = []
             for xy in candidates_xy:
                 if self.check_box(next_box, xy) > -1:
                     action_mask[xy[0], xy[1]] = 1
@@ -150,7 +150,6 @@ class Container(object):
                 
                 action_mask = np.hstack((action_mask.reshape((-1,)), action_mask_rot.reshape((-1,))))
 
-            # assert False, 'No FC implementation'
         else:
             assert False, 'Wrong candidate generation scheme'
 
@@ -205,8 +204,12 @@ class Container(object):
             if rm == pos_z and sc == 4 and max_area/area > 0.50:
                 return pos_z
         else:
-            if self.is_stable(box_size, [pos_xy[0], pos_xy[1], pos_z]):
-                return pos_z
+            if not self.support_constraint:
+                if self.is_stable_no_sup(box_size, [pos_xy[0], pos_xy[1], pos_z]):
+                    return pos_z
+            else:
+                if self.is_stable(box_size, [pos_xy[0], pos_xy[1], pos_z]):
+                    return pos_z
 
         return -1
 
@@ -251,15 +254,17 @@ class Container(object):
                 return -1
             
             # 안정성 체크
-            if self.is_stable(box_size, [ems[0], ems[1], pos_z]):
-                return pos_z
+            if not self.support_constraint:
+                if self.is_stable_no_sup(box_size, [ems[0], ems[1], pos_z]):
+                    return pos_z
+            else:
+                if self.is_stable(box_size, [ems[0], ems[1], pos_z]):
+                    return pos_z
             
         return -1
 
     def is_stable_no_sup(self, dimension, position) -> bool:
-
         return True
-    
     
     def is_stable(self, dimension, position) -> bool:
         def on_segment(P1, P2, Q):
@@ -298,20 +303,26 @@ class Container(object):
         elif len(points) == 2: # whether the center lies on the line of the two points
             return on_segment(points[0], points[1], obj_center)
         else:
-            # calculate the convex hull of the points
-            points = np.array(points)
-            try:
-                convex_hull = ConvexHull(points)
-            except:
-                # error means co-lines
+            # error means co-lines
+            is_collinear = True
+            p0_x, p0_y = points[0]
+            p1_x, p1_y = points[1]
+            for i in range(2, len(points)):
+                px, py = points[i]
+                if (p1_y - p0_y) * (px - p1_x) != (py - p1_y) * (p1_x - p0_x):
+                    is_collinear = False
+                    break
+            
+            if is_collinear:
                 start_p = min(points, key=lambda p: [p[0], p[1]])
                 end_p = max(points, key=lambda p: [p[0], p[1]])
                 return on_segment(start_p, end_p, obj_center)
-
+            
+            # calculate the convex hull of the points
+            points = np.array(points)
+            convex_hull = ConvexHull(points)
             hull_path = Path(points[convex_hull.vertices])
-
             return hull_path.contains_point(obj_center)
-    
     
     def get_volume_ratio(self):
         vo = reduce(lambda x, y: x + y, [box.size_x * box.size_y * box.size_z for box in self.boxes], 0.0)
@@ -347,7 +358,7 @@ class Container(object):
             size_x, size_y = box_size[1], box_size[0]
         size_z = box_size[2]
         
-        # [수정] 3D 충돌 체크 및 경계 체크를 먼저 수행하여 False를 반환하게 함
+        # 3D 충돌 체크 및 경계 체크를 먼저 수행하여 False를 반환하게 함
         if self.check_3d_collision([size_x, size_y, size_z], pos):
             return False
             
@@ -403,14 +414,12 @@ class Container(object):
         for xy in corner_x_list:
             x, y = xy
             if y != 0 and [x, y - 1] in corner_x_list:
-                # if heightmap[x, y] == heightmap[x, y - 1] and hm_diff_x[x, y] == hm_diff_x[x, y - 1]:
                 if heightmap[x, y] == heightmap[x, y - 1]:
                     continue
             corner_xy_list.append(xy)
         for xy in corner_y_list:
             x, y = xy
             if x != 0 and [x - 1, y] in corner_y_list:
-                # if heightmap[x, y] == heightmap[x - 1, y] and hm_diff_x[x, y] == hm_diff_x[x - 1, y]:
                 if heightmap[x, y] == heightmap[x - 1, y]:
                     continue
             if xy not in corner_xy_list:
@@ -428,7 +437,6 @@ class Container(object):
         for xy in corner_list:
             z = self.check_box(next_box, xy)
             if z > -1:
-                # candidates.append([xy[0], xy[1], z, 0])
                 candidates.append([xy[0], xy[1], z, xy[0] + next_box[0], xy[1] + next_box[1], z + next_box[2]])
         
         if self.can_rotate:
@@ -436,7 +444,6 @@ class Container(object):
             for xy in corner_list:
                 z = self.check_box(rotated_box, xy)
                 if z > -1:
-                    # candidates.append([xy[0], xy[1], z, 1])
                     candidates.append([xy[0], xy[1], z, xy[0] + rotated_box[0], xy[1] + rotated_box[1], z + rotated_box[2]])
 
         # sort by z, y coordinate, then x
@@ -547,7 +554,6 @@ class Container(object):
     def candidate_from_EMS(self, next_box, max_n) -> Tuple[np.ndarray, np.ndarray]:
         heightmap = copy.deepcopy(self.heightmap)
         
-        # [수정] self.boxes를 넘겨주어 z=0 코너 및 Hollow Space를 계산함
         all_ems = compute_ems(
             heightmap, 
             container_h=self.dimension[2], 
@@ -564,7 +570,6 @@ class Container(object):
             candidates = candidates[:max_n]
         
         for id, ems in enumerate(candidates):
-            # check_box_ems는 내부적으로 z2 범위 내에 박스가 들어가는지 체크함
             if self.check_box_ems(next_box, ems) > -1:
                 mask[0, id] = 1
                 
@@ -614,11 +619,4 @@ if __name__ == '__main__':
     container.heightmap = np.array([[5, 1, 4, 4], 
                                     [1, 5, 4, 1],
                                     [4, 4, 4, 1]])
-    # container.print_heightmap()
-    # next = [3, 2, 2]
-    # mask = container.get_action_mask(next, True)
-
-    # print(mask.reshape((-1, 10, 8)))
     print(container.place_box([3, 3, 3], [0, 0, 5], 0))
-
-    # print(container.candidate_from_EMS([2, 2, 2], 10))

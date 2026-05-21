@@ -280,3 +280,21 @@ class PackingEnv(gym.Env):
 
     def render(self):
         self.renderer.add_item(self.render_box[0], self.render_box[1])
+
+class PackingEnvNoSup(PackingEnv):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.container = Container(*self.bin_size, rotation=self.can_rotate, support_constraint=False)
+
+    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
+        super().reset(seed=seed, options=options) # <- 수정: 부모 클래스의 reset을 안전하게 호출
+        
+        self.box_creator.reset()
+        # 부모가 만든 container를 덮어씌움
+        self.container = Container(*self.bin_size, rotation=self.can_rotate, support_constraint=False)
+        self.locked_heightmap = copy.deepcopy(self.container.heightmap) 
+        self.failed_actions.clear()
+        self.box_creator.generate_box_size()
+        self.candidates = np.zeros_like(self.candidates)
+        
+        return self.cur_observation, {}
