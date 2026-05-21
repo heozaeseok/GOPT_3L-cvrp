@@ -256,16 +256,12 @@ class Container(object):
             
         return -1
 
+    def is_stable_no_sup(self, dimension, position) -> bool:
+
+        return True
+    
+    
     def is_stable(self, dimension, position) -> bool:
-        """
-            check stability for 3D packing
-        Args:
-            dimension:
-            position:
-
-        Returns:
-
-        """
         def on_segment(P1, P2, Q):
             if ((Q[0] - P1[0]) * (P2[1] - P1[1]) == (P2[0] - P1[0]) * (Q[1] - P1[1]) and
                 min(P1[0], P2[0]) <= Q[0] <= max(P1[0], P2[0]) and
@@ -315,7 +311,8 @@ class Container(object):
             hull_path = Path(points[convex_hull.vertices])
 
             return hull_path.contains_point(obj_center)
-
+    
+    
     def get_volume_ratio(self):
         vo = reduce(lambda x, y: x + y, [box.size_x * box.size_y * box.size_z for box in self.boxes], 0.0)
         mx = self.dimension[0] * self.dimension[1] * self.dimension[2]
